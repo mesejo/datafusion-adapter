@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+import pyarrow as pa
+
 from harlequin import (
     HarlequinAdapter,
     HarlequinConnection,
@@ -12,29 +14,30 @@ from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
 from textual_fastdatatable.backend import AutoBackendType
 
-from harlequin_myadapter.cli_options import MYADAPTER_OPTIONS
+from datafusion import SessionContext
 
+_mapping = {
+    pa.int64() : "##"
+}
 
-class MyCursor(HarlequinCursor):
+class DataFusionCursor(HarlequinCursor):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.cur = args[0]
         self._limit: int | None = None
 
     def columns(self) -> list[tuple[str, str]]:
-        names = self.cur.column_names
-        types = self.cur.column_types
-        return list(zip(names, types))
+        return [(field.name, _mapping.get(field.type, field.type)) for field in self.cur.schema()]
 
-    def set_limit(self, limit: int) -> MyCursor:
+    def set_limit(self, limit: int) -> DataFusionCursor:
         self._limit = limit
         return self
 
     def fetchall(self) -> AutoBackendType:
         try:
             if self._limit is None:
-                return self.cur.fetchall()
+                return self.cur.to_arrow_table()
             else:
-                return self.cur.fetchmany(self._limit)
+                return self.cur.limit(self._limit).to_arrow_table()
         except Exception as e:
             raise HarlequinQueryError(
                 msg=str(e),
@@ -42,13 +45,29 @@ class MyCursor(HarlequinCursor):
             ) from e
 
 
-class MyConnection(HarlequinConnection):
+def _list_schemas_in_db(catalog):
+    return [(name, catalog.database(name)) for name in catalog.names()]
+
+
+def _list_relations_in_schema(schema):
+    return [(name, (table := schema.table(name)), table.kind) for name in schema.names()]
+
+
+def _list_columns_in_relation(relation):
+    return [(field.name, field.type) for field in list(relation.schema)]
+
+
+def _list_databases(conn):
+    names = conn.sql("select distinct table_catalog from information_schema.tables;").to_pydict()["table_catalog"]
+    return [(name, conn.catalog(name)) for name in names]
+
+class DataFusionConnection(HarlequinConnection):
     def __init__(
         self, conn_str: Sequence[str], *args: Any, init_message: str = "", **kwargs: Any
     ) -> None:
         self.init_message = init_message
         try:
-            self.conn = "your database library's connect method goes here"
+            self.conn = SessionContext()
         except Exception as e:
             raise HarlequinConnectionError(
                 msg=str(e), title="Harlequin could not connect to your database."
@@ -56,7 +75,9 @@ class MyConnection(HarlequinConnection):
 
     def execute(self, query: str) -> HarlequinCursor | None:
         try:
-            cur = self.conn.execute(query)  # type: ignore
+            cur = self.conn.sql(query)  # type: ignore
+            if str(cur.logical_plan()) == "EmptyRelation":
+                return None
         except Exception as e:
             raise HarlequinQueryError(
                 msg=str(e),
@@ -64,27 +85,27 @@ class MyConnection(HarlequinConnection):
             ) from e
         else:
             if cur is not None:
-                return MyCursor(cur)
+                return DataFusionCursor(cur)
             else:
                 return None
 
     def get_catalog(self) -> Catalog:
-        databases = self.conn.list_databases()
+        databases = _list_databases(self.conn)
         db_items: list[CatalogItem] = []
-        for db in databases:
-            schemas = self.conn.list_schemas_in_db(db)
+        for db_name, db in databases:
+            schemas = _list_schemas_in_db(db)
             schema_items: list[CatalogItem] = []
-            for schema in schemas:
-                relations = self.conn.list_relations_in_schema(schema)
+            for schema_name, schema in schemas:
+                relations = _list_relations_in_schema(schema)
                 rel_items: list[CatalogItem] = []
-                for rel, rel_type in relations:
-                    cols = self.conn.list_columns_in_relation(rel)
+                for rel_name, rel, rel_type in relations:
+                    cols = _list_columns_in_relation(rel)
                     col_items = [
                         CatalogItem(
                             qualified_identifier=f'"{db}"."{schema}"."{rel}"."{col}"',
                             query_name=f'"{col}"',
                             label=col,
-                            type_label=col_type,
+                            type_label=_mapping.get(col_type, col_type),
                         )
                         for col, col_type in cols
                     ]
@@ -127,13 +148,12 @@ class MyConnection(HarlequinConnection):
         ]
 
 
-class MyAdapter(HarlequinAdapter):
-    ADAPTER_OPTIONS = MYADAPTER_OPTIONS
+class DataFusionAdapter(HarlequinAdapter):
 
     def __init__(self, conn_str: Sequence[str], **options: Any) -> None:
         self.conn_str = conn_str
         self.options = options
 
-    def connect(self) -> MyConnection:
-        conn = MyConnection(self.conn_str, self.options)
+    def connect(self) -> DataFusionConnection:
+        conn = DataFusionConnection(self.conn_str, self.options)
         return conn

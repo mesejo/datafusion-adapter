@@ -1,20 +1,21 @@
 [tool.poetry]
-name = "harlequin-myadapter"
+name = "harlequin-datafusion"
 version = "0.1.0"
-description = "A Harlequin adapter for <my favorite database>."
-authors = ["Ted Conbeer <tconbeer@users.noreply.github.com>"]
+description = "A Harlequin adapter for DataFusion."
+authors = ["Daniel Mesejo <mesejoleon@gmail.com>"]
 license = "MIT"
 readme = "README.md"
 packages = [
-    { include = "harlequin_myadapter", from = "src" },
+    { include = "harlequin_datafusion", from = "src" },
 ]
 
 [tool.poetry.plugins."harlequin.adapter"]
-my-adapter = "harlequin_myadapter:MyAdapter"
+datafusion = "harlequin_datafusion:DataFusionAdapter"
 
 [tool.poetry.dependencies]
 python = ">=3.8.1,<4.0"
 harlequin = "^1.7"
+datafusion = "^38.0.1"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.1.6"
