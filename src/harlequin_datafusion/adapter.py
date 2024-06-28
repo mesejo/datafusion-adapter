@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 import pyarrow as pa
-
+from datafusion import SessionContext
 from harlequin import (
     HarlequinAdapter,
     HarlequinConnection,
@@ -14,11 +14,35 @@ from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
 from textual_fastdatatable.backend import AutoBackendType
 
-from datafusion import SessionContext
-
 _mapping = {
-    pa.int64() : "##"
+    pa.null(): "nul",
+    pa.bool_(): "t/f",
+    pa.int8(): "##",
+    pa.int16(): "##",
+    pa.int32(): "##",
+    pa.int64(): "##",
+    pa.uint8(): "##",
+    pa.uint16(): "##",
+    pa.uint32(): "##",
+    pa.uint64(): "##",
+    pa.float32(): "#.#",
+    pa.float64(): "#.#",
+    pa.decimal128(15, 2): "#.##",
+    pa.time32("s"): "t",
+    pa.time64("ns"): "t",
+    pa.timestamp("s"): "dt",
+    pa.timestamp("us"): "dt",
+    pa.date32(): "d",
+    pa.date64(): "d",
+    pa.month_day_nano_interval(): "mdn",
+    pa.binary(): "010",
+    pa.string(): "s",
+    pa.utf8(): "s",
+    pa.large_binary(): "010",
+    pa.large_string(): "s",
+    pa.large_utf8(): "s",
 }
+
 
 class DataFusionCursor(HarlequinCursor):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -26,7 +50,9 @@ class DataFusionCursor(HarlequinCursor):
         self._limit: int | None = None
 
     def columns(self) -> list[tuple[str, str]]:
-        return [(field.name, _mapping.get(field.type, field.type)) for field in self.cur.schema()]
+        return [
+            (field.name, _mapping.get(field.type, "?")) for field in self.cur.schema()
+        ]
 
     def set_limit(self, limit: int) -> DataFusionCursor:
         self._limit = limit
@@ -50,7 +76,9 @@ def _list_schemas_in_db(catalog):
 
 
 def _list_relations_in_schema(schema):
-    return [(name, (table := schema.table(name)), table.kind) for name in schema.names()]
+    return [
+        (name, (table := schema.table(name)), table.kind) for name in schema.names()
+    ]
 
 
 def _list_columns_in_relation(relation):
@@ -58,8 +86,11 @@ def _list_columns_in_relation(relation):
 
 
 def _list_databases(conn):
-    names = conn.sql("select distinct table_catalog from information_schema.tables;").to_pydict()["table_catalog"]
+    names = conn.sql(
+        "select distinct table_catalog from information_schema.tables;"
+    ).to_pydict()["table_catalog"]
     return [(name, conn.catalog(name)) for name in names]
+
 
 class DataFusionConnection(HarlequinConnection):
     def __init__(
@@ -92,14 +123,14 @@ class DataFusionConnection(HarlequinConnection):
     def get_catalog(self) -> Catalog:
         databases = _list_databases(self.conn)
         db_items: list[CatalogItem] = []
-        for db_name, db in databases:
-            schemas = _list_schemas_in_db(db)
+        for db, db_val in databases:
+            schemas = _list_schemas_in_db(db_val)
             schema_items: list[CatalogItem] = []
-            for schema_name, schema in schemas:
-                relations = _list_relations_in_schema(schema)
+            for schema, schema_val in schemas:
+                relations = _list_relations_in_schema(schema_val)
                 rel_items: list[CatalogItem] = []
-                for rel_name, rel, rel_type in relations:
-                    cols = _list_columns_in_relation(rel)
+                for rel, rel_val, rel_type in relations:
+                    cols = _list_columns_in_relation(rel_val)
                     col_items = [
                         CatalogItem(
                             qualified_identifier=f'"{db}"."{schema}"."{rel}"."{col}"',
@@ -149,7 +180,6 @@ class DataFusionConnection(HarlequinConnection):
 
 
 class DataFusionAdapter(HarlequinAdapter):
-
     def __init__(self, conn_str: Sequence[str], **options: Any) -> None:
         self.conn_str = conn_str
         self.options = options

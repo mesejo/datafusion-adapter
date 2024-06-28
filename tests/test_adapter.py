@@ -3,7 +3,7 @@ import sys
 import pytest
 from harlequin.adapter import HarlequinAdapter, HarlequinConnection, HarlequinCursor
 from harlequin.catalog import Catalog, CatalogItem
-from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
+from harlequin.exception import HarlequinQueryError
 from harlequin_datafusion.adapter import DataFusionAdapter, DataFusionConnection
 from textual_fastdatatable.backend import create_backend
 
@@ -57,6 +57,37 @@ def test_execute_select(connection: DataFusionConnection) -> None:
     assert backend.column_count == 1
     assert backend.row_count == 1
 
+
+def test_execute_select_from_csv(connection: DataFusionConnection) -> None:
+    from pathlib import Path
+
+    table = Path(__file__).absolute().parent / "data" / "functional_alltypes.parquet"
+    create_query = (
+        f"CREATE EXTERNAL TABLE alltypes STORED AS PARQUET LOCATION '{table}';"
+    )
+    connection.execute(create_query)
+
+    cur = connection.execute("select * from alltypes limit 100;")
+    assert isinstance(cur, HarlequinCursor)
+    assert cur.columns() == [
+        ("id", "##"),
+        ("bool_col", "t/f"),
+        ("tinyint_col", "##"),
+        ("smallint_col", "##"),
+        ("int_col", "##"),
+        ("bigint_col", "##"),
+        ("float_col", "#.#"),
+        ("double_col", "#.#"),
+        ("date_string_col", "s"),
+        ("string_col", "s"),
+        ("timestamp_col", "dt"),
+        ("year", "##"),
+        ("month", "##"),
+    ]
+    data = cur.fetchall()
+    backend = create_backend(data)
+    assert backend.column_count == 13
+    assert backend.row_count == 100
 
 
 def test_set_limit(connection: DataFusionConnection) -> None:
