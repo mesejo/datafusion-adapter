@@ -4,7 +4,16 @@ version = "0.1.0"
 description = "A Harlequin adapter for DataFusion."
 authors = ["Daniel Mesejo <mesejoleon@gmail.com>"]
 license = "MIT"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: User Interfaces",
+    "Topic :: Database :: Database Engines/Servers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: Implementation :: CPython"
+]
 readme = "README.md"
+repository = "https://github.com/mesejo/datafusion-adapter"
 packages = [
     { include = "harlequin_datafusion", from = "src" },
 ]
