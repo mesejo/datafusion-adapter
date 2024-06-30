@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "harlequin-datafusion"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Harlequin adapter for DataFusion."
 authors = ["Daniel Mesejo <mesejoleon@gmail.com>"]
 license = "MIT"
