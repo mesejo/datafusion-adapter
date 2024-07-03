@@ -169,15 +169,6 @@ class DataFusionConnection(HarlequinConnection):
             )
         return Catalog(items=db_items)
 
-    def get_completions(self) -> list[HarlequinCompletion]:
-        extra_keywords = ["foo", "bar", "baz"]
-        return [
-            HarlequinCompletion(
-                label=item, type_label="kw", value=item, priority=1000, context=None
-            )
-            for item in extra_keywords
-        ]
-
 
 class DataFusionAdapter(HarlequinAdapter):
     def __init__(self, conn_str: Sequence[str], **options: Any) -> None:
